@@ -1,0 +1,28 @@
+name: Solar System Workflow
+
+on:
+    workflow_dispatch:
+    push:
+        branches:
+            - main
+            - "feature/*" # Trigger on pushes to main and feature branches. the syntax may be the issue.
+
+jobs:
+    unit-testing:
+        name: Unit Testing
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 18
+                  check-latest: true # always fetch latest 18.x.x patch
+
+            - name: Install Dependencies
+              run: npm install
+
+            - name: Run Unit Tests
+              run: npm test
