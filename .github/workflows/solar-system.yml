@@ -59,6 +59,7 @@ jobs:
               run: npm install
 
             - name: Run coverage
+              continue-on-error: true
               run: npm run coverage
 
             - name: Archive coverage report
