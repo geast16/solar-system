@@ -5,8 +5,7 @@ on:
     push:
         branches:
             - main
-            - "/*" # Trigger on pushes to main and feature branches. the syntax may be the issue.
-
+            - "feature/*" # matches feature/foo — NOT exploring-workflow
 jobs:
     unit-testing:
         name: Unit Testing
