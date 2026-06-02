@@ -5,7 +5,7 @@ on:
     push:
         branches:
             - main
-            - "feature/*" # Trigger on pushes to main and feature branches. the syntax may be the issue.
+            - "/*" # Trigger on pushes to main and feature branches. the syntax may be the issue.
 
 jobs:
     unit-testing:
