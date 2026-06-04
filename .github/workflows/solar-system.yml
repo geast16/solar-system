@@ -18,7 +18,7 @@ jobs:
         strategy:
             matrix:
                 nodejs_version: [18, 20]
-                operating_system: [ubuntu-latest, macos-latest]
+                operating_system: [ubuntu-latest]
                 exclude:
                     - nodejs_version: 18
                       operating_system: macos-latest
@@ -100,6 +100,25 @@ jobs:
                   username: ${{ vars.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
+            - name: Build Docker Image for Testing
+              uses: docker/build-push-action@v5
+              with:
+                  context: . # points to local Dockerfile in the root directory.
+                  load: true
+                  push: false
+                  tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+            - name: Run Container and Test `/live` Endpoint
+              run: |
+                  docker run --rm --name solar-system-app -d \\
+                  -p 3000:3000 \\
+                  -e MONGO_URI=$MONGO_URI \\
+                  -e MONGO_USERNAME=$MONGO_USERNAME \\
+                  -e MONGO_PASSWORD=$MONGO_PASSWORD \\
+                  ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+                  echo "Verifying /live endpoint"
+                  wget -q -O - <http://127.0.0.1:3000/live> | grep live
             # - name: Build Docker Image
             #   run: |
             #       docker build -t my-app:${{ github.sha }} .
