@@ -151,11 +151,6 @@ jobs:
             - name: Checkout Repository
               uses: actions/checkout@v4
 
-            - name: Authenticate to Google Cloud
-              uses: google-github-actions/auth@v2
-              with:
-                  credentials_json: ${{ secrets.GCP_SA_KEY }}
-
             - name: Install kubectl CLI
               uses: azure/setup-kubectl@v3
               with:
@@ -172,15 +167,19 @@ jobs:
 
             - name: Fetch Kubernetes Cluster Details
               run: |
-                  kubectl version --short
+                  kubectl version
                   echo "------------------------------------------"
                   kubectl get nodes
 
             - name: Save Nginx Ingress IP
-              id: ingress
               run: |
-                  echo "INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
-                    -o jsonpath='{.status.loadBalancer.ingress[0].ip}')" >> $GITHUB_ENV
+                  INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+                      -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ -z "$INGRESS_IP" ]; then
+                      echo "ERROR: Ingress IP is empty"
+                      exit 1
+                  fi
+                  echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_ENV
 
             - name: Replace Tokens in Manifests
               uses: cschleiden/replace-tokens@v1
@@ -192,15 +191,18 @@ jobs:
                   NAMESPACE: ${{ vars.NAMESPACE }}
                   REPLICAS: ${{ vars.REPLICAS }}
                   IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-                  #INGRESS_IP: ${{ env.INGRESS_IP }} added to manifest for future use
+                  INGRESS_IP: ${{ env.INGRESS_IP }}
+
+            - name: Verify Replaced Manifests
+              run: cat kubernetes/development/*.yaml
 
             - name: Deploy to Development Environment
-              run: |
-                  kubectl apply -f kubernetes/development/
+              run: kubectl apply -f kubernetes/development/
 
             - name: Verify Development Deployment
               run: |
-                  kubectl rollout status deployment/solar-system -n ${{ vars.NAMESPACE }}
+                  kubectl rollout status deployment/solar-system \
+                      -n ${{ vars.NAMESPACE }} --timeout=120s
                   kubectl get pods -n ${{ vars.NAMESPACE }}
                   kubectl get ingress -n ${{ vars.NAMESPACE }}
 
