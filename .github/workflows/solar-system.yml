@@ -69,7 +69,7 @@ jobs:
         runs-on: ubuntu-latest
         services:
             mongo:
-                image: geast16/mongo-db:non-prod
+                image: geast1363/mongo-db:non-prod
                 options: --name mongo
         env:
             MONGO_URI: "mongodb://mongo:27017/superData" #uses the name of the service container (mongo) as the hostname to connect to MongoDB.
