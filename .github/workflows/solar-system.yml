@@ -157,7 +157,16 @@ jobs:
                   version: "v1.26.0"
 
             - name: Install gke-gcloud-auth-plugin
-              run: sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y apt-transport-https ca-certificates gnupg
+                  curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+                      | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+                  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] \
+                      https://packages.cloud.google.com/apt cloud-sdk main" \
+                      | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+                  sudo apt-get update
+                  sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
 
             - name: Configure kubeconfig context
               uses: azure/k8s-set-context@v3
@@ -192,9 +201,6 @@ jobs:
                   REPLICAS: ${{ vars.REPLICAS }}
                   IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
                   INGRESS_IP: ${{ env.INGRESS_IP }}
-
-            - name: Verify Replaced Manifests
-              run: cat kubernetes/development/*.yaml
 
             - name: Deploy to Development Environment
               run: kubectl apply -f kubernetes/development/
