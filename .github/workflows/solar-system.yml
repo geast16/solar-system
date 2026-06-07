@@ -142,11 +142,12 @@ jobs:
     dev-deploy:
         name: Dev Deploy
         needs: docker
+        environment:
+            name: development
+            url: <https://$>{{ steps.set-ingress-host-address.outputs.APP_INGRESS_HOST }}
         outputs:
             APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_URL }}
         runs-on: ubuntu-latest
-        environment:
-            name: development
         env:
             USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
         steps:
