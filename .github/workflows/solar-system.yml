@@ -144,8 +144,8 @@ jobs:
         if: contains(github.ref, 'feature/')
         needs: docker
         uses: ./.github/workflows/reuse-deployment.yml
-        with:
-            kubeconfig: ${{ secrets.KUBECONFIG }}
+        # with:
+        #     kubeconfig: ${{ secrets.KUBECONFIG }}
 
     dev-integration-testing:
         name: Dev Integration Testing
@@ -165,8 +165,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         needs: docker
         uses: ./.github/workflows/reuse-deployment.yml
-        with:
-            kubeconfig: ${{ secrets.KUBECONFIG }}
+        # with:
+        #     kubeconfig: ${{ secrets.KUBECONFIG }}
 
     prod-integration-testing:
         name: Prod Integration Testing
