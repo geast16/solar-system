@@ -147,6 +147,11 @@ jobs:
         secrets:
             k8s-kubeconfig: ${{ secrets.KUBECONFIG }}
             mongodb-password: ${{ secrets.MONGO_PASSWORD }}
+        with:
+            mongodb-uri: ${{ vars.MONGO_URI }}
+            kubectl-version: ${{ vars.KUBECTL_VERSION }}
+            k8s-manifest-dir: ${{ vars.K8S_MANIFEST_DIR }}
+            environment: ${{ vars.ENVIRONMENT }}
 
     dev-integration-testing:
         name: Dev Integration Testing
@@ -169,6 +174,11 @@ jobs:
         secrets:
             k8s-kubeconfig: ${{ secrets.KUBECONFIG }}
             mongodb-password: ${{ secrets.MONGO_PASSWORD }}
+        with:
+            mongodb-uri: ${{ vars.MONGO_URI }}
+            kubectl-version: ${{ vars.KUBECTL_VERSION }}
+            k8s-manifest-dir: ${{ vars.K8S_MANIFEST_DIR }}
+            environment: ${{ vars.ENVIRONMENT }}
 
     prod-integration-testing:
         name: Prod Integration Testing
