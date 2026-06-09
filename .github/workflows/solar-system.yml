@@ -149,7 +149,7 @@ jobs:
             mongodb-password: ${{ secrets.MONGO_PASSWORD }}
         with:
             mongodb-uri: ${{ vars.MONGO_URI }}
-            kubectl-version: ${{ vars.KUBECTL_VERSION }}
+            kubectl-version: v1.27.0 # optional override
             k8s-manifest-dir: ${{ vars.K8S_MANIFEST_DIR }}
             environment: ${{ vars.ENVIRONMENT }}
 
