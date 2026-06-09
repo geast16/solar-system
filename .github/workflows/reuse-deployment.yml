@@ -110,7 +110,9 @@ jobs:
                   -o yaml | kubectl apply -f -
 
             - name: Deploy to Development Environment
-              run: kubectl apply -f ${{ inputs.k8s-manifest-dir }}/*.yaml
+              run: |
+                  kubectl apply -f ${{ inputs.k8s-manifest-dir }}
+                  echo "Deployment complete."
 
             - name: Verify Development Deployment
               run: |
