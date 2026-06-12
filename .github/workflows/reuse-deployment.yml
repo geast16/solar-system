@@ -63,11 +63,11 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
 
-            - name: Configure kubeconfig context
-              run: |
-                  mkdir -p $HOME/.kube
-                  echo "${{ secrets.KUBECONFIG_CONTENT }}" > $HOME/.kube/config
-                  echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+            - name: Set Kubeconfig file
+              uses: azure/k8s-set-context@v3
+              with:
+                  method: kubeconfig
+                  kubeconfig: ${{ secrets.k8s-kubeconfig }}
 
             - name: Fetch Kubernetes Cluster Details
               run: |
