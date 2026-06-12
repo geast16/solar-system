@@ -109,10 +109,17 @@ jobs:
                   echo "Final contents:"
                   ls -ltr reports-${{ github.sha }}/
 
-            - name:
-                  Upload to AWS S3
-                  # TODO: Replace with official AWS S3 upload action or AWS CLI
-              run: echo "Uploading reports to S3..."
+            - name: Sync to S3
+              uses: jakejarvis/s3-sync-action@master
+              with:
+                  args: --acl public-read --follow-symlinks --delete
+              env:
+                  AWS_S3_BUCKET: solar-system-reports-bucket9494
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  AWS_REGION: "us-east-1" # Optional: defaults to us-east-1
+                  SOURCE_DIR: reports-${{ github.sha }}
+                  DEST_DIR: reports-${{ github.sha }}
 
     docker:
         name: Containerization
