@@ -38,7 +38,7 @@ jobs:
               with:
                   node-version: ${{ matrix.nodejs_version }}
 
-            - name: Install Dependencies
+            - name: Install Dependencies - Composite Action
               uses: ./.github/custom-actions/npm-action
               with:
                   cache-folder: node_modules
@@ -65,7 +65,7 @@ jobs:
               with:
                   node-version: 18
 
-            - name: Install Dependencies
+            - name: Install Dependencies - Composite Action
               uses: ./.github/custom-actions/npm-action
               with:
                   cache-folder: node_modules
