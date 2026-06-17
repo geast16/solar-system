@@ -16,7 +16,7 @@ jobs:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   giphy-api-key: ${{ secrets.GIPHY_API_KEY }}
 
-            - name: Post JavaScript Action PR Comment
+            - name: KodeKloud Giphy PR Comment 9421
               uses: geast16/js-action-pr-giphy-comment@1.0.0-alpha
               with:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
