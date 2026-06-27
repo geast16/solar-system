@@ -14,6 +14,7 @@ env:
 
 jobs:
     unit-testing:
+        runs-on: ubuntu-latest
         name: Unit Testing
         services:
             mongo-db:
@@ -28,52 +29,46 @@ jobs:
             matrix:
                 nodejs_version: [18, 20]
                 operating_system: [ubuntu-latest]
-        runs-on: ${{ matrix.operating_system }}
         steps:
             - name: Checkout Repository
               uses: actions/checkout@v4
 
-            - name: Setup Node.js - ${{ matrix.nodejs_version }}
+            - name: Setup Node.js
               uses: actions/setup-node@v3
               with:
                   node-version: ${{ matrix.nodejs_version }}
-                  cache: "npm"
 
-            - name: Install Dependencies
-              run: npm ci
+            - name: Install Dependencies - Composite Action
+              uses: ./.github/custom-actions/npm-action
+              with:
+                  cache-folder: node_modules
 
             - name: Run Unit Tests
-              id: nodejs-unit-testing-step
+              id: nodejs-unit-testing
               run: npm test
 
-            - name: Archive Test Results
+            - name: Archive Test Result
               if: always()
               uses: actions/upload-artifact@v4
               with:
-                  name: Mocha-Test-Result-${{ matrix.nodejs_version }}
+                  name: Mocha-Test-Result
                   path: test-results.xml
 
     code-coverage:
-        name: Code Coverage
-        container:
-            image: node:18
         runs-on: ubuntu-latest
-        services:
-            mongo:
-                image: geast1363/mongo-db:non-prod
-                options: --name mongo
-                ports:
-                    - 27017:27017
-        env:
-            MONGO_URI: "mongodb://mongo:27017/superData"
-            MONGO_USERNAME: non-prod-user
-            MONGO_PASSWORD: non-prod-password
         steps:
             - name: Checkout Repository
               uses: actions/checkout@v4
 
-            - name: Install Dependencies
-              run: npm ci
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 18
+
+            - name: Install Dependencies - Composite Action
+              uses: ./.github/custom-actions/npm-action
+              with:
+                  cache-folder: node_modules
 
             - name: Run Coverage
               continue-on-error: true
@@ -85,6 +80,50 @@ jobs:
                   name: Code-Coverage-Result
                   path: coverage
                   retention-days: 5
+
+        env:
+            MONGO_URI: "mongodb://mongo:27017/superData"
+            MONGO_USERNAME: non-prod-user
+            MONGO_PASSWORD: non-prod-password
+
+    reports-s3:
+        name: AWS S3 - Upload Reports
+        needs: [unit-testing, code-coverage]
+        runs-on: ubuntu-latest
+        continue-on-error: true
+        steps:
+            - name: Download Mocha Test Artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: Mocha-Test-Result
+
+            - name: Download Code Coverage Artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: Code-Coverage-Result
+
+            - name: Merge Test Files
+              run: |
+                  echo "Listing workspace contents..."
+                  ls -ltr
+                  echo "Creating reports directory..."
+                  mkdir reports-${{ github.sha }}
+                  mv cobertura-coverage.xml reports-${{ github.sha }}/
+                  mv test-results.xml       reports-${{ github.sha }}/
+                  echo "Final contents:"
+                  ls -ltr reports-${{ github.sha }}/
+
+            - name: Sync to S3
+              uses: jakejarvis/s3-sync-action@master
+              with:
+                  args: --follow-symlinks --delete
+              env:
+                  AWS_S3_BUCKET: solar-system-reports-bucket9494
+                  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  AWS_REGION: "us-east-1" # Optional: defaults to us-east-1
+                  SOURCE_DIR: reports-${{ github.sha }}
+                  DEST_DIR: reports-${{ github.sha }}
 
     docker:
         name: Containerization
@@ -130,113 +169,33 @@ jobs:
                   echo "Verifying /live endpoint"
                   wget -q -O - http://127.0.0.1:3000/live | grep live
 
-            - name: Push to Docker Hub and GHCR
+            - name: Push to Docker Hub
               uses: docker/build-push-action@v5
               with:
                   context: .
                   push: true
-                  tags: |
-                      ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-                      ghcr.io/${{ github.repository_owner }}/solar-system:${{ github.sha }}
+                  tags: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
+
+            - name: Push to GHCR
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  push: true
+                  tags: ghcr.io/${{ github.repository_owner }}/solar-system:${{ github.sha }}
 
     dev-deploy:
         name: Dev Deploy
         if: contains(github.ref, 'feature/')
         needs: docker
-        environment:
-            name: development
-            url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_URL }}
-        outputs:
-            APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_URL }}
-        runs-on: ubuntu-latest
-        env:
-            USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@v4
-
-            - name: Install kubectl CLI
-              uses: azure/setup-kubectl@v3
-              with:
-                  version: "v1.26.0"
-
-            - name: Install gke-gcloud-auth-plugin
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y apt-transport-https ca-certificates gnupg
-                  curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-                      | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-                  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] \
-                      https://packages.cloud.google.com/apt cloud-sdk main" \
-                      | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
-                  sudo apt-get update
-                  sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
-
-            - name: Configure kubeconfig context
-              uses: azure/k8s-set-context@v3
-              with:
-                  method: kubeconfig
-                  kubeconfig: ${{ secrets.KUBECONFIG }}
-
-            - name: Fetch Kubernetes Cluster Details
-              run: |
-                  kubectl version
-                  echo "------------------------------------------"
-                  kubectl get nodes
-
-            - name: Save Nginx Ingress IP
-              id: save-nginx-ingress-ip
-              run: |
-                  INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
-                      -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                  if [ -z "$INGRESS_IP" ]; then
-                      echo "ERROR: Ingress IP is empty"
-                      exit 1
-                  fi
-                  echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_ENV
-                  echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_OUTPUT
-
-            - name: Replace Tokens in Manifests
-              uses: cschleiden/replace-tokens@v1
-              with:
-                  tokenPrefix: "_{_"
-                  tokenSuffix: "_}_"
-                  files: kubernetes/development/*.yaml
-              env:
-                  NAMESPACE: ${{ vars.NAMESPACE }}
-                  REPLICAS: ${{ vars.REPLICAS }}
-                  IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-                  INGRESS_IP: ${{ env.INGRESS_IP }}
-
-            - name: Create MongoDB Secret
-              run: |
-                  kubectl -n ${{ vars.NAMESPACE }} create secret generic mongo-db-creds \
-                  --from-literal=MONGO_URI=$MONGO_URI \
-                  --from-literal=MONGO_USERNAME=$MONGO_USERNAME \
-                  --from-literal=MONGO_PASSWORD=$MONGO_PASSWORD \
-                  --save-config \
-                  --dry-run=client \
-                  -o yaml | kubectl apply -f -
-
-            - name: Deploy to Development Environment
-              run: kubectl apply -f kubernetes/development/
-
-            - name: Verify Development Deployment
-              run: |
-                  kubectl rollout status deployment/solar-system \
-                      -n ${{ vars.NAMESPACE }} --timeout=120s
-                  kubectl get pods -n ${{ vars.NAMESPACE }}
-                  kubectl get ingress -n ${{ vars.NAMESPACE }}
-
-            - name: Verify replaced manifests
-              run: cat kubernetes/development/*.yaml
-
-            - name: Set App Ingress Host URL
-              id: set-ingress-host-address
-              run: |
-                  HOST=$(kubectl -n ${{ vars.NAMESPACE }} \
-                      get ingress -o jsonpath='{.items[0].spec.tls[0].hosts[0]}')
-                  echo "APP_INGRESS_URL=$HOST" >> "$GITHUB_OUTPUT"
+        uses: ./.github/workflows/reuse-deployment.yml
+        secrets:
+            k8s-kubeconfig: ${{ secrets.KUBECONFIG }}
+            mongodb-password: ${{ secrets.MONGO_PASSWORD }}
+        with:
+            mongodb-uri: ${{ vars.MONGO_URI }}
+            kubectl-version: v1.27.0 # optional override
+            k8s-manifest-dir: kubernetes/development
+            environment: ${{ vars.ENVIRONMENT }}
 
     dev-integration-testing:
         name: Dev Integration Testing
@@ -246,7 +205,7 @@ jobs:
         steps:
             - name: Test /live Endpoint
               env:
-                  URL: ${{ needs.dev-deploy.outputs.APP_INGRESS_URL }}
+                  URL: ${{ needs.dev-deploy.outputs.application-url }}
               run: |
                   echo "Testing endpoint: https://$URL/live"
                   curl https://$URL/live -s -k | jq -r .status | grep -iq live
@@ -255,100 +214,15 @@ jobs:
         name: Prod Deploy
         if: github.ref == 'refs/heads/main'
         needs: docker
-        environment:
-            name: production
-            url: https://${{ steps.set-ingress-host-address.outputs.APP_INGRESS_URL }}
-        outputs:
-            APP_INGRESS_URL: ${{ steps.set-ingress-host-address.outputs.APP_INGRESS_URL }}
-        runs-on: ubuntu-latest
-        env:
-            USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
-        steps:
-            - name: Checkout Repository
-              uses: actions/checkout@v4
-
-            - name: Install kubectl CLI
-              uses: azure/setup-kubectl@v3
-              with:
-                  version: "v1.26.0"
-
-            - name: Install gke-gcloud-auth-plugin
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y apt-transport-https ca-certificates gnupg
-                  curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-                      | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
-                  echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] \
-                      https://packages.cloud.google.com/apt cloud-sdk main" \
-                      | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
-                  sudo apt-get update
-                  sudo apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
-
-            - name: Configure kubeconfig context
-              uses: azure/k8s-set-context@v3
-              with:
-                  method: kubeconfig
-                  kubeconfig: ${{ secrets.KUBECONFIG }}
-
-            - name: Fetch Kubernetes Cluster Details
-              run: |
-                  kubectl version
-                  echo "------------------------------------------"
-                  kubectl get nodes
-
-            - name: Save Nginx Ingress IP
-              id: save-nginx-ingress-ip
-              run: |
-                  INGRESS_IP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
-                      -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                  if [ -z "$INGRESS_IP" ]; then
-                      echo "ERROR: Ingress IP is empty"
-                      exit 1
-                  fi
-                  echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_ENV
-                  echo "INGRESS_IP=$INGRESS_IP" >> $GITHUB_OUTPUT
-
-            - name: Replace Tokens in Manifests
-              uses: cschleiden/replace-tokens@v1
-              with:
-                  tokenPrefix: "_{_"
-                  tokenSuffix: "_}_"
-                  files: kubernetes/production/*.yaml
-              env:
-                  NAMESPACE: ${{ vars.NAMESPACE }}
-                  REPLICAS: ${{ vars.REPLICAS }}
-                  IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/solar-system:${{ github.sha }}
-                  INGRESS_IP: ${{ env.INGRESS_IP }}
-
-            - name: Create MongoDB Secret
-              run: |
-                  kubectl -n ${{ vars.NAMESPACE }} create secret generic mongo-db-creds \
-                  --from-literal=MONGO_URI=$MONGO_URI \
-                  --from-literal=MONGO_USERNAME=$MONGO_USERNAME \
-                  --from-literal=MONGO_PASSWORD=$MONGO_PASSWORD \
-                  --save-config \
-                  --dry-run=client \
-                  -o yaml | kubectl apply -f -
-
-            - name: Deploy to Production Environment
-              run: kubectl apply -f kubernetes/production/
-
-            - name: Verify Production Deployment
-              run: |
-                  kubectl rollout status deployment/solar-system \
-                      -n ${{ vars.NAMESPACE }} --timeout=120s
-                  kubectl get pods -n ${{ vars.NAMESPACE }}
-                  kubectl get ingress -n ${{ vars.NAMESPACE }}
-
-            - name: Check manifest files
-              run: cat kubernetes/production/*.yaml
-
-            - name: Set App Ingress Host URL
-              id: set-ingress-host-address
-              run: |
-                  HOST=$(kubectl -n ${{ vars.NAMESPACE }} \
-                      get ingress -o jsonpath='{.items[0].spec.tls[0].hosts[0]}')
-                  echo "APP_INGRESS_URL=$HOST" >> "$GITHUB_OUTPUT"
+        uses: ./.github/workflows/reuse-deployment.yml
+        secrets:
+            k8s-kubeconfig: ${{ secrets.KUBECONFIG }}
+            mongodb-password: ${{ secrets.MONGO_PASSWORD }}
+        with:
+            mongodb-uri: ${{ vars.MONGO_URI }}
+            kubectl-version: ${{ vars.KUBECTL_VERSION }}
+            k8s-manifest-dir: kubernetes/production
+            environment: ${{ vars.ENVIRONMENT }}
 
     prod-integration-testing:
         name: Prod Integration Testing
@@ -358,7 +232,28 @@ jobs:
         steps:
             - name: Test /live Endpoint
               env:
-                  URL: ${{ needs.prod-deploy.outputs.APP_INGRESS_URL }}
+                  URL: ${{ needs.prod-deploy.outputs.application-url }}
               run: |
                   echo "Testing endpoint: https://$URL/live"
                   curl https://$URL/live -s -k | jq -r .status | grep -iq live
+
+    slack-notification:
+        if: always()
+        name: Slack Notification
+        needs: [dev-integration-testing, prod-integration-testing]
+        continue-on-error: true
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Send Slack notification
+              uses: rtCamp/action-slack-notify@v2
+              env:
+                  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+                  SLACK_CHANNEL: github-actions-channel
+                  SLACK_COLOR: ${{ job.status }}
+                  SLACK_ICON: <https://gitlab.com/sidd-harth/solar-system/-/raw/main/images/saturn.png>
+                  SLACK_MESSAGE: ":hammer_and_wrench: Triggered by ${{ github.actor }}"
+                  SLACK_TITLE: "Pipeline Status"

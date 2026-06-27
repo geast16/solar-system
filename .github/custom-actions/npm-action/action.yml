@@ -1,0 +1,19 @@
+name: 'NPM Cache & Install'
+description: 'Composite action to cache and install NPM packages'
+inputs:
+  cache-folder:
+    description: 'Directory to cache (e.g., node_modules)'
+    required: true
+    default: 'node_modules'
+runs:
+  using: 'composite'
+  steps:
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ inputs.cache-folder }}
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      run: npm install
+      shell: bash
